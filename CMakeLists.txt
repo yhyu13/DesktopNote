@@ -14,13 +14,14 @@ add_library(desktopnote_core STATIC
   src/app_state.cpp
   src/base64.cpp
   src/data_store.cpp
+  src/hotkey.cpp
   src/win_util.cpp
 )
 target_include_directories(desktopnote_core PUBLIC src third_party)
 target_compile_definitions(desktopnote_core PUBLIC
   UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX WINVER=0x0A00 _WIN32_WINNT=0x0A00
 )
-target_link_libraries(desktopnote_core PUBLIC crypt32 ole32 shell32)
+target_link_libraries(desktopnote_core PUBLIC crypt32 ole32 shell32 user32)
 
 add_executable(DesktopNote WIN32
   src/main.cpp

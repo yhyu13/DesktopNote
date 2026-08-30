@@ -1,6 +1,7 @@
 #include "app_state.h"
 #include "base64.h"
 #include "data_store.h"
+#include "hotkey.h"
 #include "win_util.h"
 
 #include <windows.h>
@@ -27,6 +28,15 @@ void Check(bool condition, const char* expression, const char* file, int line) {
 }
 
 #define CHECK(expression) Check(static_cast<bool>(expression), #expression, __FILE__, __LINE__)
+
+struct SkippedTest {};
+
+struct ScopedGlobalHotkey {
+    HWND window;
+    int id;
+    ScopedGlobalHotkey(HWND window, int id) : window(window), id(id) {}
+    ~ScopedGlobalHotkey() { UnregisterGlobalHotkey(window, id); }
+};
 
 std::filesystem::path NewTestDirectory() {
     wchar_t temporary[MAX_PATH]{};
@@ -354,6 +364,43 @@ void TestResilientUtfConversions() {
     CHECK(!converted.empty());
 }
 
+void TestGlobalHotkeyContract() {
+    const auto& bindings = DefaultHotkeyBindings();
+    CHECK(bindings.size() == 2);
+    CHECK(bindings[0].action != bindings[1].action);
+    CHECK(static_cast<int>(GlobalHotkey::NewNote) == 0x01);
+    CHECK(static_cast<int>(GlobalHotkey::ToggleAll) == 0x02);
+
+    const auto& new_note = bindings[0];
+    CHECK(new_note.action == GlobalHotkey::NewNote);
+    CHECK(new_note.modifiers == (MOD_CONTROL | MOD_ALT | MOD_NOREPEAT));
+    CHECK(new_note.virtual_key == 'N');
+
+    const auto& toggle_all = bindings[1];
+    CHECK(toggle_all.action == GlobalHotkey::ToggleAll);
+    CHECK(toggle_all.modifiers == (MOD_CONTROL | MOD_ALT | MOD_NOREPEAT));
+    CHECK(toggle_all.virtual_key == 'H');
+}
+
+void TestGlobalHotkeyLifecycle() {
+    constexpr int kId = 0x1234;
+    constexpr UINT kModifiers = MOD_CONTROL | MOD_ALT;
+    constexpr UINT kVirtualKey = VK_F24;
+    // A thread-bound (nullptr hwnd) hotkey needs a message queue to deliver
+    // WM_HOTKEY; this peek forces the queue into existence, without which
+    // RegisterHotKey returns FALSE.
+    MSG message{};
+    PeekMessageW(&message, nullptr, 0, 0, PM_NOREMOVE);
+    if (!RegisterGlobalHotkey(nullptr, kId, kModifiers, kVirtualKey)) {
+        throw SkippedTest{};
+    }
+    ScopedGlobalHotkey cleanup(nullptr, kId);
+    CHECK(!RegisterGlobalHotkey(nullptr, kId, kModifiers, kVirtualKey));  // duplicate → conflict
+    CHECK(UnregisterGlobalHotkey(nullptr, kId));
+    CHECK(RegisterGlobalHotkey(nullptr, kId, kModifiers, kVirtualKey));  // re-register after release
+    CHECK(UnregisterGlobalHotkey(nullptr, kId));
+}
+
 }  // namespace
 
 int main() {
@@ -371,19 +418,26 @@ int main() {
         {"data root override and instance identity", TestDataRootOverrideAndInstanceIdentity},
         {"resilient deserialization", TestResilientDeserialization},
         {"resilient UTF conversions", TestResilientUtfConversions},
+        {"global hotkey contract", TestGlobalHotkeyContract},
+        {"global hotkey lifecycle", TestGlobalHotkeyLifecycle},
     };
 
     int failed = 0;
+    int skipped = 0;
     for (const auto& [name, test] : tests) {
         try {
             test();
             std::cout << "[PASS] " << name << '\n';
+        } catch (const SkippedTest&) {
+            ++skipped;
+            std::cout << "[SKIP] " << name << '\n';
         } catch (const std::exception& error) {
             ++failed;
             std::cerr << "[FAIL] " << name << ": " << error.what() << '\n';
         }
     }
-    std::cout << tests.size() - static_cast<std::size_t>(failed) << "/" << tests.size()
-              << " tests passed\n";
+    std::cout << tests.size() - static_cast<std::size_t>(failed + skipped) << "/"
+              << tests.size() - static_cast<std::size_t>(skipped) << " tests passed ("
+              << skipped << " skipped)\n";
     return failed == 0 ? 0 : 1;
 }

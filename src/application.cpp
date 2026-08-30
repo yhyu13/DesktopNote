@@ -1,5 +1,6 @@
 #include "application.h"
 
+#include "hotkey.h"
 #include "note_window.h"
 #include "resource.h"
 #include "win_util.h"
@@ -83,6 +84,7 @@ Application::~Application() {
         try { SaveNow(); } catch (...) {}
     }
     RemoveTrayIcon();
+    UnregisterHotkeys();
     for (auto& window : windows_) window->Destroy();
     windows_.clear();
     if (controller_window_) DestroyWindow(controller_window_);
@@ -132,6 +134,7 @@ int Application::Run() {
     ShowAllWindows();
     NoteUserActivity();
     SetTimer(controller_window_, kIdleTrimTimer, kIdleCheckIntervalMilliseconds, nullptr);
+    RegisterHotkeys();
 
     LogDebug("Entering message loop...");
     MSG message{};
@@ -280,6 +283,7 @@ void Application::Exit() {
     if (!SaveNow()) return;
     exiting_ = true;
     RemoveTrayIcon();
+    UnregisterHotkeys();
     for (auto& window : windows_) window->Destroy();
     windows_.clear();
     DestroyWindow(controller_window_);
@@ -340,6 +344,25 @@ void Application::RemoveTrayIcon() {
     data.uID = 1;
     Shell_NotifyIconW(NIM_DELETE, &data);
     tray_added_ = false;
+}
+
+void Application::RegisterHotkeys() {
+    if (!controller_window_) return;
+    for (const auto& binding : DefaultHotkeyBindings()) {
+        const bool ok = RegisterGlobalHotkey(
+            controller_window_, static_cast<int>(binding.action),
+            binding.modifiers, binding.virtual_key);
+        LogDebug(std::string("Global hotkey ") +
+                 (binding.action == GlobalHotkey::NewNote ? "NewNote" : "ToggleAll") +
+                 (ok ? " registered" : " FAILED to register"));
+    }
+}
+
+void Application::UnregisterHotkeys() {
+    if (!controller_window_) return;
+    for (const auto& binding : DefaultHotkeyBindings()) {
+        UnregisterGlobalHotkey(controller_window_, static_cast<int>(binding.action));
+    }
 }
 
 void Application::ShowTrayMenu(POINT point) {
@@ -598,6 +621,16 @@ LRESULT Application::HandleControllerMessage(UINT message, WPARAM wparam, LPARAM
         case kNewNote:
             NoteUserActivity();
             CreateNewNote(reinterpret_cast<NoteWindow*>(lparam));
+            return 0;
+        case WM_HOTKEY:
+            NoteUserActivity();
+            if (static_cast<GlobalHotkey>(wparam) == GlobalHotkey::NewNote) {
+                CreateNewNote(active_window_);
+            } else if (static_cast<GlobalHotkey>(wparam) == GlobalHotkey::ToggleAll) {
+                ToggleAllWindows();
+            } else {
+                LogDebug("Unexpected WM_HOTKEY id=" + std::to_string(static_cast<int>(wparam)));
+            }
             return 0;
         case WM_DISPLAYCHANGE:
             for (auto& window : windows_) {

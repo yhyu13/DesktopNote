@@ -1,5 +1,9 @@
 # Changelog
 
+## 未发布
+
+- 新增全局热键快速捕捉：`Ctrl+Alt+N` 一键新建并聚焦便签，`Ctrl+Alt+H` 显示/隐藏全部便签（此前托盘菜单的 "Ctrl+N / Ctrl+T" 只是无效的文字标签）。
+
 ## 2.0.0
 
 - 使用 C++20、原生 Win32、Direct2D 和 Windowless RichEdit 完整重写。

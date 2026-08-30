@@ -36,6 +36,8 @@ private:
 
     void AddTrayIcon();
     void RemoveTrayIcon();
+    void RegisterHotkeys();
+    void UnregisterHotkeys();
     void ShowTrayMenu(POINT point);
     void ShowAllWindows();
     void ToggleAllWindows();
