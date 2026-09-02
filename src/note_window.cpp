@@ -364,11 +364,18 @@ void NoteWindow::UpdateEditorBounds() {
     RECT client{};
     GetClientRect(window_, &client);
     const UINT dpi = DpiForWindowOrSystem(window_);
-    const int padding = DipToPixel(note_.appearance.padding_dip, dpi);
-    const int content_top = DipToPixel(kColorBarHeightDip, dpi);
-    editor_bounds_ = {padding, padding + content_top,
-                      std::max<LONG>(padding + 1, client.right - padding),
-                      std::max<LONG>(padding + content_top + 1, client.bottom - padding)};
+    // The RichEdit host renders against a D2D target whose coordinate space is
+    // DIPs, so editor_bounds_ must be expressed in DIPs (not device pixels).
+    // Passing a pixel rect made the control lay text out at a scale that
+    // diverged from the DIP caret, causing the caret to drift at any DPI != 96.
+    const float pixel_to_dip = 96.0F / static_cast<float>(dpi ? dpi : 96);
+    const int client_width_dip = static_cast<int>(static_cast<float>(client.right) * pixel_to_dip);
+    const int client_height_dip = static_cast<int>(static_cast<float>(client.bottom) * pixel_to_dip);
+    const int padding_dip = static_cast<int>(note_.appearance.padding_dip);
+    const int content_top_dip = static_cast<int>(kColorBarHeightDip);
+    editor_bounds_ = {padding_dip, padding_dip + content_top_dip,
+                      std::max<LONG>(padding_dip + 1, client_width_dip - padding_dip),
+                      std::max<LONG>(padding_dip + content_top_dip + 1, client_height_dip - padding_dip)};
     if (rich_edit_) rich_edit_->SetBounds(editor_bounds_);
 }
 
@@ -1017,6 +1024,15 @@ LRESULT NoteWindow::HandleMessage(UINT message, WPARAM wparam, LPARAM lparam) {
                     return 0;
                 } else if (wparam == 'L' || wparam == 'l') {
                     SetLocked(!note_.window.locked);
+                    return 0;
+                } else if (wparam == 'B' || wparam == 'b') {
+                    if (rich_edit_) rich_edit_->ApplyBold();
+                    return 0;
+                } else if (wparam == 'I' || wparam == 'i') {
+                    if (rich_edit_) rich_edit_->ApplyItalic();
+                    return 0;
+                } else if (wparam == 'U' || wparam == 'u') {
+                    if (rich_edit_) rich_edit_->ApplyUnderline();
                     return 0;
                 }
             }

@@ -53,3 +53,30 @@ ctest --preset msvc-release        # 3 套件：DesktopNoteTests / RichEdit / Wi
 2. 纯文本/Markdown 模式 + 粘贴无格式。
 3. 导出/导入 Markdown。
 4. 热键自定义 UI（当前固定默认值）。
+
+---
+
+## 第二次会话（2026-09-01）——光标漂移修复 + 100 增强点子脑暴
+
+### 本次决策
+- **修复光标/插入符闪烁位置漂移（贴边时最明显）**：根因是 `RichEditHost` 的坐标系错配——`bounds_`（RichEdit 客户区）在 `NoteWindow::UpdateEditorBounds` 里被存成**设备像素**，但 D2D 渲染目标、插入符、背景都在 **DIP**。任何窗口 DPI != 96 时，控制件把「像素值」当 DIP 布局文字，比例就偏差（120 DPI 时文字 1.25× 过大），于是插入符相对文字漂移。修法：`bounds_` 全链路改成 DIP（`UpdateEditorBounds` 用 `pixel_to_dip` 把客户区像素转 DIP、padding 用 `padding_dip`），`Draw()` 直接以 DIP 的 `bounds_` 作 `TxDrawD2D` 的 `prcView`，插入符同 DIP 空间绘制；`TxGetExtent` 的 HIMETRIC 基改正的 96（而非窗口 DPI）。
+- **新增 B/I/U 快捷键**（Ctrl+B / Ctrl+I / Ctrl+U）：`RichEditHost::ApplyBold/Italic/Underline` + `ToggleCharacterFormat(mask, effect)`（读 EM_GETCHARFORMAT 再翻转，真 toggle），`note_window` WM_KEYDOWN 拦截。属于增强点 #17。
+- **新增 中英文混合字数统计**：`RichEditHost::CharacterCount()/WordCount()`（CJK 每个字形算 1 词 + 拉丁按空白分词）。属于增强点 #5（计数逻辑部分先落地，页脚 UI 待视觉确认）。
+- **新文档**：`docs/enhancements-100-ideas.md` —— 100 条 P0/P1/P2 增强点（用 web-design taste 词汇转译到原生 Win32/Direct2D 便签），含 P0 cull 清单。
+
+### 新学习（Msftedit / D2D 宿主）
+- **Windowless RichEdit (ITextHost2) 的客户区、`prcView`、插入符坐标必须统一为 DIP**（因为 D2D 渲染目标/背景/插入符都在 DIP）。把客户区存成像素是漂移类 bug 的温床。
+- **`TxGetExtent` 的 HIMETRIC 换算基是 96**（DIP 就 96/inch），不是窗口 DPI。
+- **用工具 patch 含 `\\r`/`\\n` 的单字符宽字符字面量会把转义变成真实 CR**（JSON 解码）→ 多字符字面量编译错。用 Python 脚本重写更稳。
+- **回归测试法**：在**非 96 DPI** 渲染目标（如 120 DPI）画文字，断言「非透明像素不逃出 DIP 换算后的像素框」。92 基线是 96 DPI 单向，抓不到 DPI 错配。
+
+### 测试基线（当前）
+- `ctest` 3/3 全绿（~2.7s）；RichEdit 套件新增：CaretDIP 一致性、B/I/U 翻转、CJK 字数。
+
+### 下一步（P0 增强点，多数需产品/视觉确认）
+1. 记事本总览/检索面板（#53，补足当前无总览的缺口）。
+2. 贴边折叠 tab 显示首行「peek」标签（#40）。
+3. 贴边 tab 不遮挡任务栏（#49，工作区感知）。
+4. 快速捕捉不抢占焦点 / 完全钳制到屏内（#70 / #78）。
+5. 纯色主题 palette 体系（#21）+ 统一圆角尺度（#24）+ 首运行空态（#38）。
+6. 字数统计页脚 UI 落地（#5 的展示层）。

@@ -123,16 +123,20 @@ void RichEditHost::SetBounds(const RECT& bounds) {
 
 HRESULT RichEditHost::Draw(ID2D1RenderTarget* render_target) {
     if (!text_services_ || !render_target) return E_POINTER;
+    // bounds_ is expressed in DIPs (see NoteWindow::UpdateEditorBounds / SetBounds),
+    // and the D2D render target's coordinate space is DIPs too, so the text, the
+    // caret below and the note background in NoteRenderer all live in one space.
+    // Passing the pixel rect here (the historical bug) laid the text out at a
+    // different scale than the DIP caret, so the caret visibly drifted away from
+    // the text whenever the window DPI was not 96 (e.g. on docking / moving).
     const RECTL bounds{bounds_.left, bounds_.top, bounds_.right, bounds_.bottom};
     const HRESULT hr = text_services_->TxDrawD2D(render_target, &bounds, nullptr, TXTVIEW_ACTIVE);
     const bool has_focus = (GetFocus() == window_);
     if (has_focus && caret_show_ && caret_blink_on_ && !read_only_) {
-        const UINT dpi = DpiForWindowOrSystem(window_);
-        const float pixel_to_dip = 96.0F / static_cast<float>(dpi ? dpi : 96);
-        const float x = static_cast<float>(caret_x_) * pixel_to_dip;
-        const float y = static_cast<float>(caret_y_) * pixel_to_dip;
-        const float w = std::max(1.8F, static_cast<float>(caret_width_) * pixel_to_dip);
-        const float h = std::max(14.0F, static_cast<float>(caret_height_) * pixel_to_dip);
+        const float x = static_cast<float>(caret_x_);
+        const float y = static_cast<float>(caret_y_);
+        const float w = std::max(1.8F, static_cast<float>(caret_width_));
+        const float h = std::max(14.0F, static_cast<float>(caret_height_));
         ID2D1SolidColorBrush* caret_brush = nullptr;
         if (SUCCEEDED(render_target->CreateSolidColorBrush(
                 D2DColor(font_color_, 0.95F), &caret_brush))) {
@@ -249,6 +253,30 @@ void RichEditHost::ApplyFontColor(std::uint32_t color) {
     ApplyCharacterFormat(format);
 }
 
+void RichEditHost::ApplyBold() { ToggleCharacterFormat(CFM_BOLD, CFE_BOLD); }
+void RichEditHost::ApplyItalic() { ToggleCharacterFormat(CFM_ITALIC, CFE_ITALIC); }
+void RichEditHost::ApplyUnderline() { ToggleCharacterFormat(CFM_UNDERLINE, CFE_UNDERLINE); }
+
+void RichEditHost::ToggleCharacterFormat(DWORD mask, DWORD effect) {
+    if (!text_services_) return;
+    // Read the current format at the selection so a second press can toggle the
+    // effect off; this makes Ctrl+B / Ctrl+I / Ctrl+U behave as real toggles.
+    CHARFORMAT2W current{};
+    current.cbSize = sizeof(current);
+    LRESULT ignored = 0;
+    text_services_->TxSendMessage(EM_GETCHARFORMAT, SCF_SELECTION,
+                                  reinterpret_cast<LPARAM>(&current), &ignored);
+    CHARFORMAT2W format{};
+    format.cbSize = sizeof(format);
+    format.dwMask = mask;
+    format.dwEffects = (current.dwEffects & effect) ? 0 : effect;
+    text_services_->TxSendMessage(EM_SETCHARFORMAT, SCF_SELECTION,
+                                  reinterpret_cast<LPARAM>(&format), &ignored);
+    if (on_change_) on_change_();
+    InvalidateRect(window_, &bounds_, FALSE);
+    SendMessageW(window_, WM_PAINT, 0, 0);
+}
+
 void RichEditHost::ApplyParagraphSpacing(double spacing_dip) {
     if (!text_services_) return;
     const LONG spacing_twips = static_cast<LONG>(std::clamp(spacing_dip, 0.0, 48.0) * 15.0);
@@ -278,6 +306,30 @@ void RichEditHost::SetReadOnly(bool read_only) {
     read_only_ = read_only;
     LRESULT ignored = 0;
     if (text_services_) text_services_->TxSendMessage(EM_SETREADONLY, read_only, 0, &ignored);
+}
+
+std::size_t RichEditHost::CharacterCount() const { return PlainText().size(); }
+
+std::size_t RichEditHost::WordCount() const {
+    // Mixed CJK + Latin word count: each CJK ideograph is one word; Latin/digits
+    // are grouped into words delimited by whitespace. Used for the status footer.
+    const std::wstring text = PlainText();
+    std::size_t words = 0;
+    bool in_word = false;
+    for (const wchar_t ch : text) {
+        const bool whitespace = ch == L'\r' || ch == L'\n' || ch == L' ' ||
+                                ch == L'\t' || ch == static_cast<wchar_t>(0x3000);
+        if (whitespace) {
+            in_word = false;
+        } else if (ch >= static_cast<wchar_t>(0x4E00) && ch <= static_cast<wchar_t>(0x9FFF)) {
+            ++words;
+            in_word = false;
+        } else if (!in_word) {
+            ++words;
+            in_word = true;
+        }
+    }
+    return words;
 }
 
 void RichEditHost::UpdateDefaultFormats(const Appearance& appearance) {
@@ -382,9 +434,11 @@ HRESULT RichEditHost::TxGetPasswordChar(TCHAR* character) { if (!character) retu
 HRESULT RichEditHost::TxGetAcceleratorPos(LONG* position) { if (!position) return E_POINTER; *position = -1; return S_OK; }
 HRESULT RichEditHost::TxGetExtent(LPSIZEL extent) {
     if (!extent) return E_POINTER;
-    const UINT dpi = DpiForWindowOrSystem(window_);
-    extent->cx = MulDiv(bounds_.right - bounds_.left, 2540, dpi);
-    extent->cy = MulDiv(bounds_.bottom - bounds_.top, 2540, dpi);
+    // bounds_ is in DIPs (96 units per inch), so HIMETRIC (2540 units per inch)
+    // needs the fixed 96 basis, not the window DPI. (Passing dpi here treated a
+    // DIP rect as pixels and scaled the text against the DIP caret.)
+    extent->cx = MulDiv(bounds_.right - bounds_.left, 2540, 96);
+    extent->cy = MulDiv(bounds_.bottom - bounds_.top, 2540, 96);
     return S_OK;
 }
 HRESULT RichEditHost::OnTxCharFormatChange(const CHARFORMATW* format) {

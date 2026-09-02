@@ -34,6 +34,11 @@ public:
     void ApplyFontSize(double size_dip);
     void ApplyFontColor(std::uint32_t color);
     void ApplyParagraphSpacing(double spacing_dip);
+    void ApplyBold();
+    void ApplyItalic();
+    void ApplyUnderline();
+    std::size_t CharacterCount() const;
+    std::size_t WordCount() const;
     void SetReadOnly(bool read_only);
     void ToggleCaretBlink();
 
@@ -100,6 +105,7 @@ public:
 private:
     void UpdateDefaultFormats(const Appearance& appearance);
     void ApplyCharacterFormat(CHARFORMAT2W& format);
+    void ToggleCharacterFormat(DWORD mask, DWORD effect);
 
     HWND window_ = nullptr;
     HMODULE rich_edit_module_ = nullptr;

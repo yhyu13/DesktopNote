@@ -81,3 +81,24 @@ ME = 用户，YOU = AI。日期 2026-08-29 ~ 2026-08-30。
 ### 一句话总结
 
 用户定方向、AI 定证据——方向一句「go」，证据靠真实构建、真实按键、真实计数。
+
+---
+
+## 会话 2（2026-09-01）——修复光标漂移 + 100 条增强点子脑暴 + P0 落地
+
+ME = 用户，YOU = AI。
+
+| 阶段 | ME | YOU |
+|---|---|---|
+| 0 起点 | 「cursor drift when docking to side on windows (or cursor in note drift in general)；用 web design taste 技能脑暴 100 条 P0–P2 增强；审 P0、去烂点子；执行 P0」 | 先建基线：`cmake --preset msvc-release` + 构建 + `ctest` 3/3 绿。定位：`note_window.cpp`（DetectScreenEdge/CollapseToEdge）+ `rich_edit_host.cpp`（插入符）+ `note_renderer.cpp`。 |
+| 1 诊断 | （等待） | 用 120 DPI 渲染目标做回归测试，实测文字 bbox [51,268]×[59,144]（应是 [40,220]×[40,120]）——证实 RichEdit 客户区被存成设备像素、与 DIP 渲染目标/插入符错配，DPI≠96 时文字被放大、插入符漂移。 |
+| 2 修复 | （无） | 全链路统一 DIP：`UpdateEditorBounds` 客户区像素→DIP、`Draw` prcView 用 DIP 的 bounds_、插入符同 DIP 绘制、`TxGetExtent` 基=96。120 DPI 回归测试转绿。 |
+| 3 脑暴 | （无） | 写 `docs/enhancements-100-ideas.md`：把 web-design taste 词汇转译到原生 Win32/Direct2D 便签的 7 大类 100 条 P0/P1/P2；剔除 6 条烂/越界点子，留 14 条 P0（cull 在文末）。 |
+| 4 执行 P0 | （无） | 落地代码可行且可测的 P0：Ctrl+B/I/U 真 toggle（`ToggleCharacterFormat` 读现状再翻转）+ 中英文字数统计（`CharacterCount/WordCount`，CJK 按字、拉丁按空白）。其余 UI 重 P0（总览/peek/工作区感知/空态/palette）记入 STATUS 下一轮。 |
+| 5 收尾 | （无） | `ctest` 3/3 绿；写 KNOWLEDGE.md（长期记忆）、buglog bug-001、cerebrum（学习+决策+勿再犯）、STATUS（✅/🚀）、memory 日志、anatomy 更新到 docs/。git diff：src+tests 5 文件 +275/14。 |
+
+### 主线教训（本会话）
+- **先建基线再动代码**：构建/测试全绿后才碰 bug，避免把环境问题当代码问题。
+- **用非 96 DPI 的回归测试把 DPI 错配钉死**：96 DPI 单向基线（旧测试）抓不到「像素客户区 vs DIP 渲染目标」的漂移，这是 polish 评分（基线 73.8/100，polish 55）与用户抱怨的共同根因。
+- **坐标系一次性统一**：只修 `prcView` 不够（实测仍溢出）；客户区 + prcView + 插入符 + extent 必须同为 DIP。
+- **用工具写含 `\r`/`\n` 的宽字符字面量会被 JSON 解码成真实 CR** → 多字符字面量编译错；改用 Python 按字节写。
