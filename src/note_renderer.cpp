@@ -13,6 +13,14 @@ constexpr double kColorBarHeightDip = 2.0;
 constexpr double kCollapsedTabSizeDip = 18.0;
 constexpr double kCollapsedTabLengthDip = 52.0;
 
+// One repeatable radius ladder (DIP). Every rounded corner in the renderer is
+// mapped to a named step so geometry stays on a coherent scale instead of being
+// a scatter of arbitrary micro-values (this is the geometry_rhythm debt).
+constexpr float kRadiusDetail = 1.0F;  // fine interior detail: pin head cap
+constexpr float kRadiusChip   = 1.5F;  // small chip controls: lock body, screen frame, capsule handle
+constexpr float kRadiusRound  = 2.5F;  // rounded control bodies: lock shackle, mouse glyph
+constexpr float kRadiusPill   = 4.0F;  // pill surfaces: status-badge glass
+
 }  // namespace
 
 NoteRenderer::NoteRenderer() = default;
@@ -145,7 +153,7 @@ bool NoteRenderer::Render(HWND window, const Note& note, RichEditHost* rich_edit
             // 3. Draw luminous minimalist capsule pill handle
             brush->SetColor(D2DColor(note.appearance.border_color, 0.90F));
             render_target_->FillRoundedRectangle(
-                D2D1::RoundedRect(handle_rect, 1.5F, 1.5F), brush);
+                D2D1::RoundedRect(handle_rect, kRadiusChip, kRadiusChip), brush);
         } else {
             // Draw note main background across full window
             render_target_->FillRectangle(
@@ -177,22 +185,22 @@ bool NoteRenderer::Render(HWND window, const Note& note, RichEditHost* rich_edit
 
                 // 1. Subtle translucent glass background pill
                 brush->SetColor(D2DColor(0x000000, 0.35F));
-                render_target_->FillRoundedRectangle(D2D1::RoundedRect(pill_rect, 4.0F, 4.0F), brush);
+                render_target_->FillRoundedRectangle(D2D1::RoundedRect(pill_rect, kRadiusPill, kRadiusPill), brush);
 
                 // 2. Specular glass rim highlight
                 brush->SetColor(D2DColor(0xFFFFFF, 0.22F));
-                render_target_->DrawRoundedRectangle(D2D1::RoundedRect(pill_rect, 4.0F, 4.0F), brush, 1.0F);
+                render_target_->DrawRoundedRectangle(D2D1::RoundedRect(pill_rect, kRadiusPill, kRadiusPill), brush, 1.0F);
 
                 // 3. Vector glyph based on badge type
                 if (badge.type == StatusBadgeType::Lock) {
                     // Shackle (upper arch)
                     brush->SetColor(D2DColor(0xFFFFFF, 0.95F));
                     const D2D1_RECT_F shackle_rect = D2D1::RectF(cx - 3.5F, cy - 5.5F, cx + 3.5F, cy + 0.5F);
-                    render_target_->DrawRoundedRectangle(D2D1::RoundedRect(shackle_rect, 2.5F, 2.5F), brush, 1.4F);
+                    render_target_->DrawRoundedRectangle(D2D1::RoundedRect(shackle_rect, kRadiusRound, kRadiusRound), brush, 1.4F);
 
                     // Lock Body (lower box)
                     const D2D1_RECT_F body_rect = D2D1::RectF(cx - 5.0F, cy - 0.5F, cx + 5.0F, cy + 5.5F);
-                    render_target_->FillRoundedRectangle(D2D1::RoundedRect(body_rect, 1.5F, 1.5F), brush);
+                    render_target_->FillRoundedRectangle(D2D1::RoundedRect(body_rect, kRadiusChip, kRadiusChip), brush);
 
                     // Keyhole dot/line
                     brush->SetColor(D2DColor(0x000000, 0.60F));
@@ -202,7 +210,7 @@ bool NoteRenderer::Render(HWND window, const Note& note, RichEditHost* rich_edit
                     brush->SetColor(D2DColor(0xFFFFFF, 0.95F));
                     // Pin head cap
                     render_target_->FillRoundedRectangle(
-                        D2D1::RoundedRect(D2D1::RectF(cx - 3.5F, cy - 6.0F, cx + 3.5F, cy - 3.5F), 1.0F, 1.0F), brush);
+                        D2D1::RoundedRect(D2D1::RectF(cx - 3.5F, cy - 6.0F, cx + 3.5F, cy - 3.5F), kRadiusDetail, kRadiusDetail), brush);
                     // Pin barrel
                     render_target_->FillRectangle(D2D1::RectF(cx - 2.0F, cy - 3.5F, cx + 2.0F, cy + 0.5F), brush);
                     // Pin flange rim
@@ -214,7 +222,7 @@ bool NoteRenderer::Render(HWND window, const Note& note, RichEditHost* rich_edit
                     brush->SetColor(D2DColor(0xFFFFFF, 0.95F));
                     // Screen display frame
                     render_target_->DrawRoundedRectangle(
-                        D2D1::RoundedRect(D2D1::RectF(cx - 5.5F, cy - 5.0F, cx + 5.5F, cy + 2.5F), 1.5F, 1.5F), brush, 1.3F);
+                        D2D1::RoundedRect(D2D1::RectF(cx - 5.5F, cy - 5.0F, cx + 5.5F, cy + 2.5F), kRadiusChip, kRadiusChip), brush, 1.3F);
                     // Stand neck
                     render_target_->DrawLine(D2D1::Point2F(cx, cy + 2.5F), D2D1::Point2F(cx, cy + 5.0F), brush, 1.3F);
                     // Stand base bar
@@ -224,7 +232,7 @@ bool NoteRenderer::Render(HWND window, const Note& note, RichEditHost* rich_edit
                     brush->SetColor(D2DColor(0xFFFFFF, 0.95F));
                     // Mouse body
                     render_target_->DrawRoundedRectangle(
-                        D2D1::RoundedRect(D2D1::RectF(cx - 3.5F, cy - 5.5F, cx + 3.5F, cy + 3.0F), 2.5F, 2.5F), brush, 1.3F);
+                        D2D1::RoundedRect(D2D1::RectF(cx - 3.5F, cy - 5.5F, cx + 3.5F, cy + 3.0F), kRadiusRound, kRadiusRound), brush, 1.3F);
                     // Middle button / wheel
                     render_target_->DrawLine(D2D1::Point2F(cx, cy - 4.5F), D2D1::Point2F(cx, cy - 2.0F), brush, 1.2F);
                     // Pass-through ripple line
