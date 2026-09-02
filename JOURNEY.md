@@ -102,3 +102,41 @@ ME = 用户，YOU = AI。
 - **用非 96 DPI 的回归测试把 DPI 错配钉死**：96 DPI 单向基线（旧测试）抓不到「像素客户区 vs DIP 渲染目标」的漂移，这是 polish 评分（基线 73.8/100，polish 55）与用户抱怨的共同根因。
 - **坐标系一次性统一**：只修 `prcView` 不够（实测仍溢出）；客户区 + prcView + 插入符 + extent 必须同为 DIP。
 - **用工具写含 `\r`/`\n` 的宽字符字面量会被 JSON 解码成真实 CR** → 多字符字面量编译错；改用 Python 按字节写。
+
+---
+
+## 会话 3（2026-09-02 ~ 09-03）——原生 taste 评分系统 + 隔夜竞争 lane + Goodhart 加固
+
+ME = 用户，YOU = AI。
+
+| 阶段 | ME | YOU |
+|---|---|---|
+| 0 起点 | 「come up with a taste score for our project, so that multi agent iterate on that standard to get higher scores competing each other over night」 | 先读 README/ARCHITECTURE/KNOWLEDGE，确认这是原生 Win32/C++20/Direct2D 便签（前端 web taste 技能不适用，明确排除）。读 `note_renderer.cpp`/`app_state.h` 拿到真实渲染/颜色锚点。 |
+| 1 结构分 | （等待） | 写 `tools/taste_score.py`：5 维加权（build 15 / platform 20 / coherence 25 / polish 25 / type 15），每检查是可判定事实、作用域限定到拥有该属性的文件。基线 73.8/100，短板 polish=55（圆角 8 个任意值 + 无 hover/press）。 |
+| 2 Goodhart 实证 | 「古德哈特定律，我们的 score 要如何添加品味分和 mutation 来防止刷分」 | 写 `tools/taste_mutation.py` 植入 8 个回归做敏感性测试。**决定性证据：加一行死代码 `TrackMouseEvent` 分数反而 +2**（M4）；`count(DipToPixel)>=3` 删 60 个还剩 7 照样过（M7/M8）。结论：数源码符号判审美必可刷。 |
+| 3 感知层 | （等待） | 分两层：结构分=correctness gate（只判坏没坏），感知分=真正的 taste（截图评审）。写 `tools/taste_referee.py`：objective（像素推导，防作弊）+ aesthetic rubric（1–5，需人/LLM 看图 + 隐藏子集）。对合成缺陷图验证敏感（纯黑 57 / violet 68 / 空面 82，全部低于 control 100）。 |
+| 4 竞争 runner | （等待） | 写 `tools/taste_runner.py`：build 硬闸 → 结构分 → mutation → 活窗口截图 → 感知分 一条命令。验证：结构 100、感知 100、verdict ACCEPT（真实渲染内容，非编造）。 |
+| 5 cron lane | 「让 cron 运行起来，尤其是这个 repo」 | 建 `b017a0dd3f29` DesktopNote taste-score 隔夜竞争 lane（每 90m，workdir=本仓，用本仓自有 `tools/taste_*.py` 而非 renderdoc 的 6 维 skill）。测试 fire 端到端通过。 |
+| 6 真实验证 | （等待） | lane 首轮落地 3 个真实审美债提交：`f56b071`（圆角收敛成 detail/chip/round/pill 命名 scale，像素中性）、`2d82ad3`（hover 状态）、`61b0f71`（focus 状态，失焦时 chrome recede）。结构分全程保持 100，mutation 全敏感。 |
+| 7 修 runner bug | 「check cron ... if bug, fix」 | 首跑发现 `taste_runner.py` 单实例 PID 崩溃：`int((Get-Process DesktopNote).Id)` 当有残留进程时返回多值 → ValueError。修复：kill-then-launch、取 newest PID、守卫解析。复测通过。 |
+| 8 事件驱动 | 「make cron run as fast as possible」 | 写 `desktopnote_taste_gate.py` monitor（git HEAD + 跟踪源文件指纹，无时间戳），接入 lane：只在 repo 真改动时唤醒 agent，不再固定 90m 空转。 |
+| 9 构建教训 | 「build exe」 | 首次构建「成功」是增量空转（exe mtime 停在 23:00）。强链发现 **LNK1104**——残留 DesktopNote.exe 进程锁住输出文件。杀进程后重链，exe mtime 变 07:42，ctest 3/3 绿。 |
+| 10 收尾 | 「update journey and commit then push」 | 更新本 JOURNEY；`git add` 仅交付物（7 文件 +1407 行：taste 4 工具 + 文档 + AGENTS/CLAUDE），排除 `.wolf/`、`.claude…opencode`、`DesktopNote.exe.lnk`、`__pycache__`、`pr.md`；commit `07818d0` 并 push 到 `origin/main`，验证远端 HEAD 同步。 |
+
+### 主线教训（本会话）
+- **Goodhart 是实证的，不是理论**：静态计分器加一行死代码就 +2 分。凡靠 `count(符号)` 判审美的检查必可刷——必须拆成「可判定的归结构分（correctness gate）、不可判定的归感知分（截图评审）」。
+- **结构分 100 ≠ 好看**：它只问坏没坏。竞争指标必须是感知分，结构分只是淘汰线。
+- **感知分自己也要做敏感度验证**：对合成缺陷图必须下降；否则就是「永远 100」的无价值裁判。
+- **窗口工具链坑**：PowerShell `$Pid` 是保留只读变量；zh-CN 输出是 GBK 非 UTF-8；`PrintWindow` 抓 layered window 用 `PW_RENDERFULLCONTENT(2)`；活窗口可能处于 collapsed 态（text_rows≈0），capture 要重试到代表帧。
+- **骗人的「构建成功」**：incremental 增量 build 不重链 exe；Windows 上正在运行的 exe 锁住输出文件 → `LNK1104`。先杀进程再 build，并核对 exe mtime 而非只看 exit code。
+
+### 可复用的规则
+1. Goodhart 防御 = 三层：mutation audit（可刷即拒）+ structure=gate / perception=metric + 隐藏子集。
+2. 评分器循环变量避开已有语义的老名字（accent_match/bg_match，避免 `for m` 覆盖背景色导致对比度假阳性）。
+3. 感知分文字密度必须**对比背景**而非「r<120」——off-black 背景本身是暗的，会把空面当有字。
+4. 种子 RTF 必须有 `\colortbl`，否则 RichEdit 当 auto=黑，在深底上渲染黑字（误导性截图）。
+5. Windows 构建前先 `Stop-Process DesktopNote` 清残留实例，避免 LNK1104/单实例信号吞掉。
+
+### 一句话总结
+
+分数要能证明「变好」且刷不动——结构分守门、感知分定胜负、mutation 防作弊；而「构建成功」永远以 mtime 和真实运行来钉死，不以 exit code 为凭。
