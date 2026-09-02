@@ -74,6 +74,11 @@ public:
     // none). Lets the renderer lift the badge a cursor is over (real state feedback,
     // not static chrome). Passed as the mouse moves/leaves (see note_window.cpp).
     void SetHoveredBadge(int badge_index) { hovered_badge_ = badge_index; }
+    // Focus affordance: when the note window loses foreground focus to another app,
+    // the active chrome recedes (accent bar + resize grip dim) so a background note
+    // reads as visually quieter. True = note has focus (full-intent chrome). Drives
+    // real state feedback, not a hard-coded static frame.
+    void SetFocused(bool focused) { focused_ = focused; }
     void ReleaseResources();
 
 private:
@@ -88,6 +93,7 @@ private:
     int surface_width_ = 0;
     int surface_height_ = 0;
     int hovered_badge_ = -1;
+    bool focused_ = true;  // default: full-intent chrome until focus is lost
 };
 
 }  // namespace desktopnote

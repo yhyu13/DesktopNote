@@ -159,14 +159,15 @@ bool NoteRenderer::Render(HWND window, const Note& note, RichEditHost* rich_edit
             render_target_->FillRectangle(
                 D2D1::RectF(0.0F, 0.0F, logical_width, logical_height), brush);
 
-            // Draw accent bar at top of note
-            brush->SetColor(D2DColor(note.appearance.border_color, 0.95F));
+            // Draw accent bar at top of note (recedes when the note is not the
+            // foreground-focused window, so a background note reads quieter).
+            brush->SetColor(D2DColor(note.appearance.border_color, focused_ ? 0.95F : 0.55F));
             render_target_->FillRectangle(
                 D2D1::RectF(0.0F, 0.0F, logical_width, color_bar_height), brush);
 
-            // Draw resize grip dots/lines if not locked
+            // Draw resize grip dots/lines if not locked (also recedes when unfocused)
             if (!note.window.locked) {
-                brush->SetColor(D2DColor(0xFFFFFF, 0.40F));
+                brush->SetColor(D2DColor(0xFFFFFF, focused_ ? 0.40F : 0.22F));
                 const float x = logical_width - 3.0F;
                 const float y = logical_height - 3.0F;
                 for (int offset = 0; offset < 3; ++offset) {

@@ -925,6 +925,7 @@ LRESULT NoteWindow::HandleMessage(UINT message, WPARAM wparam, LPARAM lparam) {
             break;
         case WM_SETFOCUS:
             KillTimer(window_, kToolbarHideTimerId);
+            if (renderer_) renderer_->SetFocused(true);
             if (rich_edit_) rich_edit_->ForwardMessage(message, wparam, lparam);
             if (toolbar_) {
                 toolbar_->Show();
@@ -932,6 +933,7 @@ LRESULT NoteWindow::HandleMessage(UINT message, WPARAM wparam, LPARAM lparam) {
                 SetWindowPos(toolbar_->hwnd(), insert_after, 0, 0, 0, 0,
                              SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
             }
+            Render();
             return 0;
         case WM_KILLFOCUS: {
             if (rich_edit_) rich_edit_->ForwardMessage(message, wparam, lparam);
@@ -939,6 +941,9 @@ LRESULT NoteWindow::HandleMessage(UINT message, WPARAM wparam, LPARAM lparam) {
             if (callbacks_.save_now) callbacks_.save_now();
             HWND next = reinterpret_cast<HWND>(wparam);
             const bool to_toolbar = toolbar_ && (next == toolbar_->hwnd() || IsChild(toolbar_->hwnd(), next));
+            // Focus state feedback: when focus leaves to another app (not our own
+            // toolbar), the chrome recedes so a background note reads quieter.
+            if (renderer_) renderer_->SetFocused(to_toolbar);
             POINT pt{};
             GetCursorPos(&pt);
             RECT note_rect{};
@@ -959,6 +964,7 @@ LRESULT NoteWindow::HandleMessage(UINT message, WPARAM wparam, LPARAM lparam) {
                     SetTimer(window_, kAutoHideTimerId, 150, nullptr);
                 }
             }
+            Render();
             return 0;
         }
         case WM_LBUTTONDOWN: {
