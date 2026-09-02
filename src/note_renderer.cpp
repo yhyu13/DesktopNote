@@ -178,17 +178,22 @@ bool NoteRenderer::Render(HWND window, const Note& note, RichEditHost* rich_edit
 
             // Draw active status badges in top-right corner (Lock, Click-Through, TopMost, Desktop)
             const auto badges = GetActiveStatusBadges(note, logical_width);
-            for (const auto& badge : badges) {
+            for (size_t i = 0; i < badges.size(); ++i) {
+                const auto& badge = badges[i];
+                // State feedback: the badge under the cursor lifts (glass brightens,
+                // rim highlight turns up) so the interactive badges read as clickable.
+                // Same colour language; only the alpha lifts, so chrome stays coherent.
+                const bool hovered = static_cast<int>(i) == hovered_badge_;
                 const D2D1_RECT_F pill_rect = D2D1::RectF(badge.left_dip, badge.top_dip, badge.right_dip, badge.bottom_dip);
                 const float cx = (badge.left_dip + badge.right_dip) * 0.5F;
                 const float cy = (badge.top_dip + badge.bottom_dip) * 0.5F;
 
                 // 1. Subtle translucent glass background pill
-                brush->SetColor(D2DColor(0x000000, 0.35F));
+                brush->SetColor(D2DColor(0x000000, hovered ? 0.52F : 0.35F));
                 render_target_->FillRoundedRectangle(D2D1::RoundedRect(pill_rect, kRadiusPill, kRadiusPill), brush);
 
                 // 2. Specular glass rim highlight
-                brush->SetColor(D2DColor(0xFFFFFF, 0.22F));
+                brush->SetColor(D2DColor(0xFFFFFF, hovered ? 0.42F : 0.22F));
                 render_target_->DrawRoundedRectangle(D2D1::RoundedRect(pill_rect, kRadiusPill, kRadiusPill), brush, 1.0F);
 
                 // 3. Vector glyph based on badge type

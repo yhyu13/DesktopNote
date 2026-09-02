@@ -70,6 +70,10 @@ public:
     bool Initialize();
     bool Render(HWND window, const Note& note, RichEditHost* rich_edit,
                 bool is_collapsed = false, int collapsed_edge = 0);
+    // Hover affordance: index into the live GetActiveStatusBadges() list (or -1 for
+    // none). Lets the renderer lift the badge a cursor is over (real state feedback,
+    // not static chrome). Passed as the mouse moves/leaves (see note_window.cpp).
+    void SetHoveredBadge(int badge_index) { hovered_badge_ = badge_index; }
     void ReleaseResources();
 
 private:
@@ -83,6 +87,7 @@ private:
     void* surface_bits_ = nullptr;
     int surface_width_ = 0;
     int surface_height_ = 0;
+    int hovered_badge_ = -1;
 };
 
 }  // namespace desktopnote

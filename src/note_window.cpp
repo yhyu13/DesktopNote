@@ -972,6 +972,12 @@ LRESULT NoteWindow::HandleMessage(UINT message, WPARAM wparam, LPARAM lparam) {
             for (const auto& badge : badges) {
                 const RECT rc = BadgeDipToPixel(badge, dpi);
                 if (PtInRect(&rc, pt)) {
+                    // Clicking a badge mutates the active badge set; clear any stale
+                    // hover highlight so the post-toggle re-render lifts nothing wrong.
+                    if (hovered_badge_index_ != -1) {
+                        hovered_badge_index_ = -1;
+                        if (renderer_) renderer_->SetHoveredBadge(-1);
+                    }
                     if (badge.type == StatusBadgeType::Lock) {
                         SetLocked(false);
                     } else if (badge.type == StatusBadgeType::ClickThrough) {
@@ -1056,6 +1062,31 @@ LRESULT NoteWindow::HandleMessage(UINT message, WPARAM wparam, LPARAM lparam) {
                     break;
                 }
             }
+            // Hover feedback: lift the status badge under the cursor so the
+            // interactive badges read as clickable. re-render only when the hover
+            // target changes, so idle mouse-over does no unnecessary work.
+            {
+                POINT point{GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)};
+                RECT client{};
+                GetClientRect(window_, &client);
+                const UINT dpi = DpiForWindowOrSystem(window_);
+                const float pixel_to_dip = 96.0F / static_cast<float>(dpi ? dpi : 96);
+                const float logical_width = static_cast<float>(client.right) * pixel_to_dip;
+                const auto badges = GetActiveStatusBadges(note_, logical_width);
+                int hovered = -1;
+                for (int i = 0; i < static_cast<int>(badges.size()); ++i) {
+                    const RECT rc = BadgeDipToPixel(badges[i], dpi);
+                    if (PtInRect(&rc, point)) {
+                        hovered = i;
+                        break;
+                    }
+                }
+                if (hovered != hovered_badge_index_) {
+                    hovered_badge_index_ = hovered;
+                    if (renderer_) renderer_->SetHoveredBadge(hovered);
+                    Render();
+                }
+            }
             KillTimer(window_, kAutoHideTimerId);
             KillTimer(window_, kToolbarHideTimerId);
             if (toolbar_ && !toolbar_->IsVisible() && !is_collapsed_) {
@@ -1071,6 +1102,12 @@ LRESULT NoteWindow::HandleMessage(UINT message, WPARAM wparam, LPARAM lparam) {
             break;
         }
         case WM_MOUSELEAVE: {
+            // Cursor left the window: drop any raised badge highlight.
+            if (hovered_badge_index_ != -1) {
+                hovered_badge_index_ = -1;
+                if (renderer_) renderer_->SetHoveredBadge(-1);
+                Render();
+            }
             if (toolbar_ && !note_.appearance.toolbar_pinned) {
                 POINT pt{};
                 GetCursorPos(&pt);

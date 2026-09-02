@@ -94,6 +94,7 @@ private:
     int collapsed_edge_ = 0;
     RECT expanded_rect_{};
     int wheel_delta_remainder_ = 0;
+    int hovered_badge_index_ = -1;
     bool last_render_succeeded_ = false;
 };
 
